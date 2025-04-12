@@ -10,9 +10,9 @@ use once_cell::sync::{Lazy, OnceCell};
 use retour::GenericDetour;
 use std::{collections::HashMap, ffi::CStr, os::raw::c_void, sync::Mutex};
 use windows::{
-    core::PCSTR,
+    core::{BOOL, PCSTR},
     Win32::{
-        Foundation::{BOOL, HANDLE},
+        Foundation::HANDLE,
         System::{
             Console::AllocConsole,
             LibraryLoader::GetModuleHandleA,
@@ -50,7 +50,7 @@ unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: i64, a3: i64, a4: i64, 
         .unwrap()
         .registry_value::<Function>(r)
         .unwrap()
-        .call::<_, ()>(name.to_str().unwrap())
+        .call::<()>(name.to_str().unwrap())
         .unwrap();
 
     let result = hook_AddFunction.call(a1, a2, a3, a4, a5);
@@ -103,7 +103,7 @@ unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c
                     let r = hooks.get(&name).unwrap().get().unwrap();
                     lua.registry_value::<Function>(r)
                         .unwrap()
-                        .call::<_, ()>(())
+                        .call::<()>(())
                         .unwrap();
 
                     Ok(())
