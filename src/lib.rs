@@ -36,7 +36,7 @@ lazy_static! {
 static hook_AddFunction: Lazy<GenericDetour<fn_AddFunction>> = Lazy::new(|| {
     let handle = unsafe { GetModuleHandleA(PCSTR::null()).unwrap() };
     let ori: fn_AddFunction =
-        unsafe { std::mem::transmute::<usize, fn_AddFunction>(handle.0 as usize + 0x2A00C0) };
+        unsafe { std::mem::transmute::<usize, fn_AddFunction>(handle.0 as usize + 0x2A7BC0) };
     return unsafe { GenericDetour::new(ori, our_AddFunction).unwrap() };
 });
 
@@ -59,7 +59,7 @@ unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: i64, a3: i64, a4: i64, 
 
 unsafe extern "C-unwind" fn print(state: *mut lua_State) -> i32 {
     let handle = GetModuleHandleA(PCSTR::null()).unwrap();
-    let ori: fn_Print = std::mem::transmute::<usize, fn_Print>(handle.0 as usize + 0x71D250);
+    let ori: fn_Print = std::mem::transmute::<usize, fn_Print>(handle.0 as usize + 0x754CA0);
     match lua_type(state, 1) {
         LUA_TSTRING => {
             ori(1, luaL_checkstring(state, 1) as i64);
