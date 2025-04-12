@@ -8,7 +8,12 @@ use mlua::{
 };
 use once_cell::sync::{Lazy, OnceCell};
 use retour::GenericDetour;
-use std::{collections::HashMap, ffi::CStr, os::raw::c_void, sync::Mutex};
+use std::{
+    collections::HashMap,
+    ffi::CStr,
+    os::raw::{c_char, c_void},
+    sync::Mutex,
+};
 use windows::{
     core::{BOOL, PCSTR},
     Win32::{
@@ -25,9 +30,11 @@ use windows::{
 
 static LUA: OnceCell<Mutex<mlua::Lua>> = OnceCell::new();
 
-type fn_Print = unsafe extern "fastcall" fn(a1: i64, a2: i64) -> i64;
+type _QWORD = u64;
+
+type fn_Print = unsafe fn(a1: i64, a2: *const c_char) -> i64;
 type fn_AddFunction =
-    unsafe extern "fastcall" fn(a1: i64, a2: i64, a3: i64, a4: i64, a5: u32) -> i64;
+    unsafe extern "fastcall" fn(a1: i64, a2: i64, a3: i64, a4: i64, a5: u32) -> _QWORD;
 
 lazy_static! {
     static ref Hooks: Mutex<HashMap<String, OnceCell<RegistryKey>>> = Mutex::new(HashMap::new());
@@ -40,7 +47,7 @@ static hook_AddFunction: Lazy<GenericDetour<fn_AddFunction>> = Lazy::new(|| {
     return unsafe { GenericDetour::new(ori, our_AddFunction).unwrap() };
 });
 
-unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: i64, a3: i64, a4: i64, a5: u32) -> i64 {
+unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: i64, a3: i64, a4: i64, a5: u32) -> _QWORD {
     let name = CStr::from_ptr(a3 as *const i8);
     let hooks = Hooks.lock().unwrap();
     let r = hooks.get("test").unwrap().get().unwrap();
@@ -62,7 +69,7 @@ unsafe extern "C-unwind" fn print(state: *mut lua_State) -> i32 {
     let ori: fn_Print = std::mem::transmute::<usize, fn_Print>(handle.0 as usize + 0x754CA0);
     match lua_type(state, 1) {
         LUA_TSTRING => {
-            ori(1, luaL_checkstring(state, 1) as i64);
+            ori(1, luaL_checkstring(state, 1));
         }
         _ => {}
     }
