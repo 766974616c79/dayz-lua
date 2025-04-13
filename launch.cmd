@@ -1,0 +1,1 @@
+taskkill /IM DayZServer_x64.exe /F & cargo build --release & timeout 1 & "D:\Steam\steamapps\common\DayZServer\DayZServer_x64.exe" -config "D:\Steam\steamapps\common\DayZServer\serverDZ.cfg" & injrs DayZServer_x64.exe ./target/release/dayz_server.dll 
