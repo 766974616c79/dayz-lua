@@ -3,7 +3,7 @@
 
 use lazy_static::lazy_static;
 use mlua::{
-    ffi::{luaL_checkstring, lua_type, LUA_TSTRING},
+    ffi::{luaL_checknumber, luaL_checkstring, lua_type, LUA_TSTRING},
     lua_State, Function, RegistryKey,
 };
 use once_cell::sync::{Lazy, OnceCell};
@@ -57,7 +57,7 @@ unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: i64, a3: i64, a4: i64, 
         .unwrap()
         .registry_value::<Function>(r)
         .unwrap()
-        .call::<()>(name.to_str().unwrap())
+        .call::<()>((name.to_str().unwrap(), a4))
         .unwrap();
 
     let result = hook_AddFunction.call(a1, a2, a3, a4, a5);
@@ -77,6 +77,14 @@ unsafe extern "C-unwind" fn print(state: *mut lua_State) -> i32 {
     1
 }
 
+unsafe extern "C-unwind" fn run(state: *mut lua_State) -> i32 {
+    let address = luaL_checknumber(state, 1) as i64;
+    let code: fn() -> f32 = std::mem::transmute(address);
+    println!("{:?}", code());
+
+    1
+}
+
 #[no_mangle]
 unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c_void) -> BOOL {
     match reason {
@@ -92,6 +100,9 @@ unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c
 
             let print = lua.create_c_function(print).unwrap();
             lua.globals().raw_set("print", print).unwrap();
+
+            let run = lua.create_c_function(run).unwrap();
+            lua.globals().raw_set("run", run).unwrap();
 
             let hook_add = lua
                 .create_function(move |lua, (name, callback): (String, Function)| {
@@ -124,8 +135,11 @@ unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c
             lua.globals().raw_set("hooks", hooks).unwrap();
             lua.load(
                 r#"
-                hooks.Add("test", function(a)
-                    print(a)
+                hooks.Add("test", function(a, b)
+                    --if a == "IsServer" then
+                    if a == "GetTickTime" then
+                        run(b)
+                    end
                 end)
             "#,
             )
