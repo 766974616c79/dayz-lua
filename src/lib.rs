@@ -6,9 +6,14 @@ use mlua::{
     ffi::{luaL_checkstring, lua_pushinteger, lua_type, LUA_TSTRING},
     lua_State, Function, RegistryKey,
 };
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
+use retour::GenericDetour;
 use std::{
-    collections::HashMap, os::raw::{c_char, c_void}, sync::{LazyLock, Mutex}, time::Duration
+    collections::HashMap,
+    ffi::CStr,
+    os::raw::{c_char, c_void},
+    sync::{LazyLock, Mutex},
+    time::Duration,
 };
 use windows::{
     core::{BOOL, PCSTR},
@@ -167,12 +172,39 @@ impl CGame {
     }
 }
 
+type fn_AddFunction = unsafe extern "fastcall" fn(a1: i64, a2: *const i8) -> i64;
+
+static hook_AddFunction: Lazy<GenericDetour<fn_AddFunction>> = Lazy::new(|| {
+    let sig = unsafe {
+        skidscan::signature!(
+            "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B FA 48 8B D9 48 85 C9 74 ? 48 89 54 24"
+        )
+        .scan_module(EXE)
+        .unwrap()
+    };
+
+    let ori: fn_AddFunction = unsafe { std::mem::transmute::<*mut u8, fn_AddFunction>(sig) };
+    return unsafe { GenericDetour::new(ori, our_AddFunction).unwrap() };
+});
+
+unsafe extern "fastcall" fn our_AddFunction(a1: i64, a2: *const i8) -> i64 {
+    let name = CStr::from_ptr(a2).to_str().unwrap();
+    if name != "OnCEUpdate" && name != "OnVariablesSynchronized" && name != "OnNetworkTransformUpdate" && name != "OnStoreSave" && name != "DecayHealthTick" {
+        println!("{:?}", name);
+    }
+
+    let result = hook_AddFunction.call(a1, a2);
+    result
+}
+
 #[no_mangle]
 unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c_void) -> BOOL {
     match reason {
         DLL_PROCESS_ATTACH => {
             std::thread::spawn(move || {
                 AllocConsole().unwrap();
+
+                hook_AddFunction.enable().unwrap();
 
                 let lua = LUA
                     .get_or_init(|| Mutex::new(mlua::Lua::new()))
@@ -216,26 +248,27 @@ unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c
                     .create_table_from(vec![("Add", hook_add), ("Run", hook_run)])
                     .unwrap();
 
+                lua.globals().raw_set("hooks", hooks).unwrap();
+
                 std::thread::sleep(Duration::from_secs(5));
 
-                // lua.globals().raw_set("hooks", hooks).unwrap();
-                // lua.load(
-                //     r#"
-                // print(tostring(GetGame()))
-                // print(tostring(GetWorld()))"#,
-                // )
-                // .exec()
-                // .unwrap();
+                lua.load(
+                    r#"
+                print(tostring(GetGame()))
+                print(tostring(GetWorld()))"#,
+                )
+                .exec()
+                .unwrap();
 
-                let cgame = CGame::new();
-                println!("can_respawn_player {}", cgame.can_respawn_player());
-                println!("get_day_time {}", cgame.get_day_time());
-                println!("get_diag_draw_model {}", cgame.get_diag_draw_model());
-                println!("get_fps {}", cgame.get_fps());
-                println!("get_last_fps {}", cgame.get_last_fps());
-                println!("get_mod_to_be_reported {}", cgame.get_mod_to_be_reported());
-                println!("get_tick_time {}", cgame.get_tick_time());
-                println!("get_time {}", cgame.get_time());
+                // let cgame = CGame::new();
+                // println!("can_respawn_player {}", cgame.can_respawn_player());
+                // println!("get_day_time {}", cgame.get_day_time());
+                // println!("get_diag_draw_model {}", cgame.get_diag_draw_model());
+                // println!("get_fps {}", cgame.get_fps());
+                // println!("get_last_fps {}", cgame.get_last_fps());
+                // println!("get_mod_to_be_reported {}", cgame.get_mod_to_be_reported());
+                // println!("get_tick_time {}", cgame.get_tick_time());
+                // println!("get_time {}", cgame.get_time());
             });
         }
         DLL_PROCESS_DETACH => {
