@@ -8,10 +8,7 @@ use mlua::{
 };
 use once_cell::sync::OnceCell;
 use std::{
-    collections::HashMap,
-    os::raw::{c_char, c_void},
-    sync::{LazyLock, Mutex},
-    time::Duration,
+    collections::HashMap, os::raw::{c_char, c_void}, sync::{LazyLock, Mutex}, time::Duration
 };
 use windows::{
     core::{BOOL, PCSTR},
@@ -75,6 +72,101 @@ generate_function!(
     i64
 );
 
+const EXE: &str = "DayZServer_x64.exe";
+
+struct CGame {
+    offset: i64,
+}
+
+impl CGame {
+    fn new() -> Self {
+        Self {
+            offset: unsafe { std::mem::transmute::<usize, fn() -> i64>(*GetGameSig) }(),
+        }
+    }
+
+    fn can_respawn_player(&self) -> bool {
+        let sig = unsafe {
+            skidscan::signature!("48 83 EC ? E8 ? ? ? ? 48 8B C8 E8 ? ? ? ? 83 F8 ? 75 ? 48 8B 0D")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> bool>(sig) }();
+        res
+    }
+
+    fn get_day_time(&self) -> f32 {
+        let sig = unsafe {
+            skidscan::signature!("F3 0F 10 05 ? ? ? ? F3 0F 59 05 ? ? ? ? C3")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> f32>(sig) }();
+        res
+    }
+
+    fn get_diag_draw_model(&self) -> i64 {
+        0
+    }
+
+    fn get_fps(&self) -> f32 {
+        let sig = unsafe {
+            skidscan::signature!("48 83 EC ? 48 8B 0D ? ? ? ? BA")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> f32>(sig) }();
+        res
+    }
+
+    fn get_last_fps(&self) -> f32 {
+        let sig = unsafe {
+            skidscan::signature!("48 8B 05 ? ? ? ? 0F 57 C9 0F 57 C0")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> f32>(sig) }();
+        res
+    }
+
+    fn get_mod_to_be_reported(&self) -> bool {
+        let sig = unsafe {
+            skidscan::signature!("48 8B 05 ? ? ? ? 48 63 0D")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> bool>(sig) }();
+        res
+    }
+
+    fn get_tick_time(&self) -> f32 {
+        let sig = unsafe {
+            skidscan::signature!("48 83 EC ? B9 ? ? ? ? E8 ? ? ? ? F2 48 0F 2C C8")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn() -> f32>(sig) }();
+        res
+    }
+
+    fn get_time(&self) -> i64 {
+        let sig = unsafe {
+            skidscan::signature!("48 8B 89 ? ? ? ? 48 85 C9 74 ? 48 8B 01 48 FF 60 ? 33 C0 C3 CC CC CC CC CC CC CC CC CC CC 48 8B 89")
+                .scan_module(EXE)
+                .unwrap()
+        };
+
+        let res = unsafe { std::mem::transmute::<*mut u8, fn(a1: i64) -> i64>(sig) }(self.offset);
+        res
+    }
+}
+
 #[no_mangle]
 unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c_void) -> BOOL {
     match reason {
@@ -124,16 +216,26 @@ unsafe extern "system" fn DllMain(_hinst: HANDLE, reason: u32, _reserved: *mut c
                     .create_table_from(vec![("Add", hook_add), ("Run", hook_run)])
                     .unwrap();
 
-                std::thread::sleep(Duration::from_secs(3));
+                std::thread::sleep(Duration::from_secs(5));
 
-                lua.globals().raw_set("hooks", hooks).unwrap();
-                lua.load(
-                    r#"
-                print(tostring(GetGame()))
-                print(tostring(GetWorld()))"#,
-                )
-                .exec()
-                .unwrap();
+                // lua.globals().raw_set("hooks", hooks).unwrap();
+                // lua.load(
+                //     r#"
+                // print(tostring(GetGame()))
+                // print(tostring(GetWorld()))"#,
+                // )
+                // .exec()
+                // .unwrap();
+
+                let cgame = CGame::new();
+                println!("can_respawn_player {}", cgame.can_respawn_player());
+                println!("get_day_time {}", cgame.get_day_time());
+                println!("get_diag_draw_model {}", cgame.get_diag_draw_model());
+                println!("get_fps {}", cgame.get_fps());
+                println!("get_last_fps {}", cgame.get_last_fps());
+                println!("get_mod_to_be_reported {}", cgame.get_mod_to_be_reported());
+                println!("get_tick_time {}", cgame.get_tick_time());
+                println!("get_time {}", cgame.get_time());
             });
         }
         DLL_PROCESS_DETACH => {
